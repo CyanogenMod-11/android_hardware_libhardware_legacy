@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2009 The Android Open Source Project
+ * Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1107,10 +1109,7 @@ status_t AudioPolicyManagerBase::setStreamVolumeIndex(AudioSystem::stream_type s
     for (size_t i = 0; i < mOutputs.size(); i++) {
         audio_devices_t curDevice =
                 getDeviceForVolume(mOutputs.valueAt(i)->device());
-#ifndef ICS_AUDIO_BLOB
-        if ((device == AUDIO_DEVICE_OUT_DEFAULT) || (device == curDevice))
-#endif
-        {
+        if ((device == AUDIO_DEVICE_OUT_DEFAULT) || (device == curDevice)) {
             status_t volStatus = checkAndSetVolume(stream, index, mOutputs.keyAt(i), curDevice);
             if (volStatus != NO_ERROR) {
                 status = volStatus;
@@ -1127,7 +1126,6 @@ status_t AudioPolicyManagerBase::getStreamVolumeIndex(AudioSystem::stream_type s
     if (index == NULL) {
         return BAD_VALUE;
     }
-#ifndef ICS_AUDIO_BLOB
     if (!audio_is_output_device(device)) {
         return BAD_VALUE;
     }
@@ -1139,9 +1137,6 @@ status_t AudioPolicyManagerBase::getStreamVolumeIndex(AudioSystem::stream_type s
     device = getDeviceForVolume(device);
 
     *index =  mStreams[stream].getVolumeIndex(device);
-#else
-    *index =  mStreams[stream].mIndexCur.valueAt(0);
-#endif
     ALOGV("getStreamVolumeIndex() stream %d device %08x index %d", stream, device, *index);
     return NO_ERROR;
 }
@@ -2265,6 +2260,7 @@ AudioPolicyManagerBase::routing_strategy AudioPolicyManagerBase::getStrategy(
         // while key clicks are played produces a poor result
     case AudioSystem::TTS:
     case AudioSystem::MUSIC:
+    case AudioSystem::INCALL_MUSIC:
         return STRATEGY_MEDIA;
     case AudioSystem::ENFORCED_AUDIBLE:
         return STRATEGY_ENFORCED_AUDIBLE;
@@ -2920,6 +2916,11 @@ const AudioPolicyManagerBase::VolumeCurvePoint
         sDefaultSystemVolumeCurve  // DEVICE_CATEGORY_EARPIECE
     },
     { // AUDIO_STREAM_TTS
+        sDefaultMediaVolumeCurve, // DEVICE_CATEGORY_HEADSET
+        sSpeakerMediaVolumeCurve, // DEVICE_CATEGORY_SPEAKER
+        sDefaultMediaVolumeCurve  // DEVICE_CATEGORY_EARPIECE
+    },
+    { // AUDIO_STREAM_INCALL_MUSIC
         sDefaultMediaVolumeCurve, // DEVICE_CATEGORY_HEADSET
         sSpeakerMediaVolumeCurve, // DEVICE_CATEGORY_SPEAKER
         sDefaultMediaVolumeCurve  // DEVICE_CATEGORY_EARPIECE
@@ -3595,6 +3596,8 @@ const struct StringToEnum sDeviceNameToEnumTable[] = {
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_SPEAKER),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_WIRED_HEADSET),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_WIRED_HEADPHONE),
+    STRING_TO_ENUM(AUDIO_DEVICE_OUT_ANC_HEADSET),
+    STRING_TO_ENUM(AUDIO_DEVICE_OUT_ANC_HEADPHONE),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_ALL_SCO),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_ALL_A2DP),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_AUX_DIGITAL),
@@ -3602,18 +3605,26 @@ const struct StringToEnum sDeviceNameToEnumTable[] = {
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_ANLG_DOCK_HEADSET),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_USB_DEVICE),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_USB_ACCESSORY),
+    STRING_TO_ENUM(AUDIO_DEVICE_OUT_FM),
+    STRING_TO_ENUM(AUDIO_DEVICE_OUT_FM_TX),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_ALL_USB),
+    STRING_TO_ENUM(AUDIO_DEVICE_OUT_PROXY),
     STRING_TO_ENUM(AUDIO_DEVICE_OUT_REMOTE_SUBMIX),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_BUILTIN_MIC),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_WIRED_HEADSET),
+    STRING_TO_ENUM(AUDIO_DEVICE_IN_ANC_HEADSET),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_AUX_DIGITAL),
+    STRING_TO_ENUM(AUDIO_DEVICE_IN_FM_RX),
+    STRING_TO_ENUM(AUDIO_DEVICE_IN_FM_RX_A2DP),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_VOICE_CALL),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_BACK_MIC),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_REMOTE_SUBMIX),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_ANLG_DOCK_HEADSET),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_DGTL_DOCK_HEADSET),
     STRING_TO_ENUM(AUDIO_DEVICE_IN_USB_ACCESSORY),
+    STRING_TO_ENUM(AUDIO_DEVICE_IN_PROXY),
+    STRING_TO_ENUM(AUDIO_DEVICE_IN_COMMUNICATION),
 };
 
 const struct StringToEnum sFlagNameToEnumTable[] = {
@@ -3623,6 +3634,10 @@ const struct StringToEnum sFlagNameToEnumTable[] = {
     STRING_TO_ENUM(AUDIO_OUTPUT_FLAG_DEEP_BUFFER),
     STRING_TO_ENUM(AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD),
     STRING_TO_ENUM(AUDIO_OUTPUT_FLAG_NON_BLOCKING),
+    STRING_TO_ENUM(AUDIO_OUTPUT_FLAG_VOIP_RX),
+    STRING_TO_ENUM(AUDIO_OUTPUT_FLAG_LPA),
+    STRING_TO_ENUM(AUDIO_OUTPUT_FLAG_TUNNEL),
+    STRING_TO_ENUM(AUDIO_OUTPUT_FLAG_INCALL_MUSIC),
 };
 
 const struct StringToEnum sFormatNameToEnumTable[] = {
@@ -3631,12 +3646,33 @@ const struct StringToEnum sFormatNameToEnumTable[] = {
     STRING_TO_ENUM(AUDIO_FORMAT_MP3),
     STRING_TO_ENUM(AUDIO_FORMAT_AAC),
     STRING_TO_ENUM(AUDIO_FORMAT_VORBIS),
+    STRING_TO_ENUM(AUDIO_FORMAT_AC3),
+    STRING_TO_ENUM(AUDIO_FORMAT_EAC3),
+    STRING_TO_ENUM(AUDIO_FORMAT_DTS),
+    STRING_TO_ENUM(AUDIO_FORMAT_DTS_LBR),
+    STRING_TO_ENUM(AUDIO_FORMAT_WMA),
+    STRING_TO_ENUM(AUDIO_FORMAT_WMA_PRO),
+    STRING_TO_ENUM(AUDIO_FORMAT_AAC_ADIF),
+    STRING_TO_ENUM(AUDIO_FORMAT_AMR_NB),
+    STRING_TO_ENUM(AUDIO_FORMAT_AMR_WB),
+    STRING_TO_ENUM(AUDIO_FORMAT_AMR_WB_PLUS),
+    STRING_TO_ENUM(AUDIO_FORMAT_EVRC),
+    STRING_TO_ENUM(AUDIO_FORMAT_EVRCB),
+    STRING_TO_ENUM(AUDIO_FORMAT_EVRCWB),
+    STRING_TO_ENUM(AUDIO_FORMAT_QCELP),
+    STRING_TO_ENUM(AUDIO_FORMAT_MP2),
+    STRING_TO_ENUM(AUDIO_FORMAT_EVRCNW),
 };
 
 const struct StringToEnum sOutChannelsNameToEnumTable[] = {
     STRING_TO_ENUM(AUDIO_CHANNEL_OUT_MONO),
     STRING_TO_ENUM(AUDIO_CHANNEL_OUT_STEREO),
+    STRING_TO_ENUM(AUDIO_CHANNEL_OUT_2POINT1),
+    STRING_TO_ENUM(AUDIO_CHANNEL_OUT_QUAD),
+    STRING_TO_ENUM(AUDIO_CHANNEL_OUT_SURROUND),
+    STRING_TO_ENUM(AUDIO_CHANNEL_OUT_PENTA),
     STRING_TO_ENUM(AUDIO_CHANNEL_OUT_5POINT1),
+    STRING_TO_ENUM(AUDIO_CHANNEL_OUT_6POINT1),
     STRING_TO_ENUM(AUDIO_CHANNEL_OUT_7POINT1),
 };
 
@@ -3644,6 +3680,10 @@ const struct StringToEnum sInChannelsNameToEnumTable[] = {
     STRING_TO_ENUM(AUDIO_CHANNEL_IN_MONO),
     STRING_TO_ENUM(AUDIO_CHANNEL_IN_STEREO),
     STRING_TO_ENUM(AUDIO_CHANNEL_IN_FRONT_BACK),
+    STRING_TO_ENUM(AUDIO_CHANNEL_IN_5POINT1),
+    STRING_TO_ENUM(AUDIO_CHANNEL_IN_VOICE_CALL_MONO),
+    STRING_TO_ENUM(AUDIO_CHANNEL_IN_VOICE_DNLINK_MONO),
+    STRING_TO_ENUM(AUDIO_CHANNEL_IN_VOICE_UPLINK_MONO),
 };
 
 
